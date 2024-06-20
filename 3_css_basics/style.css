@@ -1,0 +1,76 @@
+h1{
+    color:purple;
+}
+#header1 {
+    color:green;
+}
+p {
+    color:blue;
+}
+#latest {
+    background-color: purple;
+}
+.navigation {
+    margin: 2px;
+}
+p.introduction {
+    margin: 5px;
+}
+/*Descendant Selectors*/
+#blog h1 {
+    color: blue;
+}
+#blog div h1 {
+    color: red;
+}
+/*Child Selectors*/
+#blog > h1 {
+    color: green;
+}
+/*:hover Pseudo-Class*/
+a:hover {
+    color: orange;
+}
+/*reference a color*/
+p {
+    color: rgb(255,0,0);
+}
+p {
+    color: rgba(255,0,0,0.8);
+}
+p {
+    color: hsl(0, 100%, 50%);
+}
+p {
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+}
+a {
+    text-transform: uppercase;
+}
+p {
+    text-decoration: underline red solid 5px;
+}
+p {
+    text-align: center;
+}
+/*HTML element center alignment*/
+/* .parent {
+    border: 4px solid red;
+}
+.child {
+    width: 50%;
+    padding: 20px;
+    border: 4px solid green;
+    margin: auto;
+}
+.child {
+    display: block;
+    width: 50%;
+    margin-left: auto;
+    margin-right: auto;
+} */
+/* HTML Element Left / Right Alignment */
+.child {
+    float: right;
+}
