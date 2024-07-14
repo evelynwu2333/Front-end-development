@@ -25,16 +25,17 @@ const App = () => {
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [weather, setWeather] = useState(null);
   const [error, setError] = useState(null);
-  
-  const MapUpdater = ({ setSelectedLocation }) => {
+  const initialLocation = { lat: -35.308433, lng: 149.124668 };
+
+  const MapUpdater = ({ selectedLocation }) => {
     const map = useMap();
 
     useEffect(() => {
-      if (setSelectedLocation) {
-        map.setView([setSelectedLocation.lat, setSelectedLocation.lng], 13);
-      } else 
-        map.locate({ setView: true, maxZoom: 16});
-      }, [setSelectedLocation, map]);
+      if (selectedLocation) {
+        // console.log(selectedLocation);
+        map.setView([selectedLocation.lat, selectedLocation.lng], 13);
+      } 
+    }, [selectedLocation, map]);
     return null;
   };
 
@@ -71,32 +72,6 @@ const App = () => {
       console.error("Autocomplete service is not initialized");
     }
   }, []);
-
-  // const fetchPlaceByText = useCallback((input) => {
-  //   if (window.placeService) {
-  //     try {
-  //       console.log("Fetching place by text for input:", input);
-  //       window.placesService.textSearch(
-  //         {query: input}, (results, status) => {
-  //           console.log("Text search response status:", status);
-  //           if (status === window.google.maps.places.PlaceServiceStatus.OK && results.length > 0) {
-  //             const location = results[0].geometry.location;
-  //             console.log("Fetched location from text search:", location);
-  //             setSelectedLocation({lat: location.lat(), lng: location.lng()});
-  //             fetchWeather(location.lat(), location.lng());
-  //           } else {
-  //             console.error("Failed to fetch location by text with status:", status);
-  //             setError("Failed to fetch location details by text. Please try again.")
-  //           }
-  //         }
-  //       );
-  //     } catch (error) {
-  //       console.error("Error fetching location by text:", error);
-  //       setError("Failed to fetch location details by text. Please try again");
-  //     }
-  
-  //   }
-  // }, []);
 
   // const sleep = (ms) => {
   //   return new Promise(resolve => setTimeout(resolve, ms));
@@ -142,7 +117,7 @@ const App = () => {
             setSelectedLocation({ lat: location.lat(), lng: location.lng() });
             // Fetch weather for the selected location
             fetchWeather(location.lat(), location.lng());
-            console.log(location.lat(), location.lng());
+            // console.log(location.lat(), location.lng());
           } else {
             console.error("Failed to fetch place details with status:", status);
             setError("Failed to fetch place details. Please try again.");
@@ -198,9 +173,9 @@ const App = () => {
       <Navbar bg="dark" variant="dark">
         <Navbar.Brand>Weather App</Navbar.Brand>
       </Navbar>
-      <Container>
-        <Row className="justify-content-md-center mt-5">
-          <Col xs={12} md={6}>
+      <Container fluid>
+        <Row className="justify-content-sm-left mt-5">
+          <Col md={12}>
             <Form>
               <Form.Group controlId="formLocationInput">
                 <Form.Label>Enter location or coordinates</Form.Label>
@@ -223,16 +198,19 @@ const App = () => {
             {error && <Alert variant="danger" className="mt-3">{error}</Alert>}
           </Col>
         </Row>
-        <Row className="justify-content-md-center mt-5">
-          <Col md={12}>
+        <Row>
+          <Col md={6} className="p-3">
             <MapContainer 
-              center={[-35.308433, 149.124668]} 
+              center={[initialLocation.lat, initialLocation.lng]} 
               zoom={13} 
-              style={{ height: '400px', width: '100%' }}
-              >
+              style={{ height: '60vh', width: '100%' }}
+            >
               <TileLayer
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              />
+              <MapUpdater 
+                selectedLocation={selectedLocation} 
               />
               {selectedLocation && (
                 <Marker position={[selectedLocation.lat, selectedLocation.lng]}>
@@ -241,15 +219,11 @@ const App = () => {
                   </Popup>
                 </Marker>
               )}
-              <MapUpdater 
-                selectedLocation={setSelectedLocation} 
-              />
+              
             </MapContainer>
           </Col>
-        </Row>
-        {weather && (
-          <Row className="justify-content-md-center mt-5">
-            <Col md={6}>
+          {weather && (
+            <Col md={6} className="p-3">
               <Card>
                 <Card.Body>
                   <Card.Title>Weather Summary</Card.Title>
@@ -262,9 +236,8 @@ const App = () => {
                   </Card.Text>
                 </Card.Body>
               </Card>
-            </Col>
+            </Col>)}
           </Row>
-        )}
       </Container>
     </div>
   );
