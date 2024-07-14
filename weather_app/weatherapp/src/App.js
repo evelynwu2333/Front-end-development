@@ -7,32 +7,35 @@ import proj4 from 'proj4';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { Navbar, Form, Button, ListGroup, Container, Row, Col, Card, Alert } from 'react-bootstrap';
 
-// Correctly setting the default icon options
+
+// Fix the default marker icon issue in leaflet
 delete L.Icon.Default.prototype._getIconUrl;
 
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
-  iconUrl: require('leaflet/dist/images/marker-icon.png'),
-  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
 });
 
+
 const App = () => {
+  // variables
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState(null);
-  const [confirmedLocation, setConfirmedLocation] = useState(null);
   const [weather, setWeather] = useState(null);
   const [error, setError] = useState(null);
-
-  const MapUpdater = ({ location }) => {
+  
+  const MapUpdater = ({ setSelectedLocation }) => {
     const map = useMap();
 
     useEffect(() => {
-      if (location) {
-        map.setView([location.lat, location.lng], 13);
-      }
-    }, [location, map]);
-  return null
+      if (setSelectedLocation) {
+        map.setView([setSelectedLocation.lat, setSelectedLocation.lng], 13);
+      } else 
+        map.locate({ setView: true, maxZoom: 16});
+      }, [setSelectedLocation, map]);
+    return null;
   };
 
   useEffect(() => {
@@ -69,58 +72,39 @@ const App = () => {
     }
   }, []);
 
-  // const fetchPlaceDetails = useCallback((placeId) => {
+  // const fetchPlaceByText = useCallback((input) => {
   //   if (window.placeService) {
   //     try {
-  //       console.log("Fetching place details for placeId:", placeId);
-  //       window.placeService.getDetails(
-  //         {placeId}, (place, status) => {
-  //           console.log("Place details response status:", status);
-  //           if (status === window.google.maps.places.PlaceServiceStatus.OK) {
-  //             const location = place.geometry.location;
-  //             console.log("Fetched location:", location);
+  //       console.log("Fetching place by text for input:", input);
+  //       window.placesService.textSearch(
+  //         {query: input}, (results, status) => {
+  //           console.log("Text search response status:", status);
+  //           if (status === window.google.maps.places.PlaceServiceStatus.OK && results.length > 0) {
+  //             const location = results[0].geometry.location;
+  //             console.log("Fetched location from text search:", location);
   //             setSelectedLocation({lat: location.lat(), lng: location.lng()});
+  //             fetchWeather(location.lat(), location.lng());
   //           } else {
-  //             console.error("Failed to fetch place details with status:", status);
-  //             setError("Failed to fetch location details. Please try again.");
+  //             console.error("Failed to fetch location by text with status:", status);
+  //             setError("Failed to fetch location details by text. Please try again.")
   //           }
   //         }
-  //       );        
+  //       );
   //     } catch (error) {
-  //       console.error("Error fetching place details:", error);
-  //       setError("Failed to fetch place details. Please try again.");
+  //       console.error("Error fetching location by text:", error);
+  //       setError("Failed to fetch location details by text. Please try again");
   //     }
-  //   }
-  // }, []); 
-
-  const fetchPlaceByText = useCallback((input) => {
-    if (window.placeService) {
-      try {
-        console.log("Fetching place by text for input:", input);
-        window.placesService.textSearch(
-          {query: input}, (results, status) => {
-            console.log("Text search response status:", status);
-            if (status === window.google.maps.places.PlaceServiceStatus.OK && results.length > 0) {
-              const location = results[0].geometry.location;
-              console.log("Fetched location from text search:", location);
-              setSelectedLocation({lat: location.lat(), lng: location.lng()});
-              fetchWeather(location.lat(), location.lng());
-            } else {
-              console.error("Failed to fetch location by text with status:", status);
-              setError("Failed to fetch location details by text. Please try again.")
-            }
-          }
-        );
-      } catch (error) {
-        console.error("Error fetching location by text:", error);
-        setError("Failed to fetch location details by text. Please try again");
-      }
   
-    }
-  }, [])
+  //   }
+  // }, []);
 
+  // const sleep = (ms) => {
+  //   return new Promise(resolve => setTimeout(resolve, ms));
+  // };
+  
   const fetchWeather = useCallback(async(lat, lng) => {
     try {
+      // await sleep(10000);
       const response = await axios.get(`https://api.openweathermap.org/data/2.5/weather`, {
         params: {
           lat: lat,
@@ -140,7 +124,7 @@ const App = () => {
     setInput(input);
     setError(null);
     if (input.length > 2) {
-      fetchSuggestions(input);
+      handleSearch(input);
     } else {
       setSuggestions([])
     }
@@ -158,6 +142,7 @@ const App = () => {
             setSelectedLocation({ lat: location.lat(), lng: location.lng() });
             // Fetch weather for the selected location
             fetchWeather(location.lat(), location.lng());
+            console.log(location.lat(), location.lng());
           } else {
             console.error("Failed to fetch place details with status:", status);
             setError("Failed to fetch place details. Please try again.");
@@ -176,16 +161,14 @@ const App = () => {
     try {
       setError(null);
       const latLngPattern = /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/;
+      const utmPattern = /^\d+\s+\d+\s+\d+[A-Z]$/i;
       if (latLngPattern.test(input)) {
         const [lat, lng] = input.split(',').map(Number);;
         setSelectedLocation({ lat, lng });
         fetchWeather(lat, lng);
         return; 
-      }
-  
-      // check if the input is UTM coordinates
-      const utmPattern = /^\d+\s+\d+\s+\d+[A-Z]$/i;
-      if (utmPattern.test(input)) {
+      } else if (utmPattern.test(input)){
+        // check if the input is UTM coordinates
         const [easting, northing, zone] = input.split(/\s+/);
         const zoneNumber = zone.slice(0, -1);
         const zoneLetter = zone.slice(-1);
@@ -196,25 +179,18 @@ const App = () => {
         );
         console.log("UTM detected:", {lat, lng});
         setSelectedLocation({lat, lng});
+        fetchWeather(lat, lng);
         return;
+      } else {
+        // if not coordinates, assume it is a place name
+        console.log('Fetching place suggestions by text...');
+        fetchSuggestions(input);
       }
-  
-      // if not coordinates, assume it is a place name
-      console.log('Fetching place by text...');
-      fetchPlaceByText(input);
     } catch (error) {
       console.error("Error during search:", error);
       setError("Failed to fetch location details. Please try again.")
     }
   };
-
-  const handleConfirm = () => {
-    if (selectedLocation) {
-      setConfirmedLocation(selectedLocation);
-      fetchWeather(selectedLocation.lat, selectedLocation.lng);
-    }
-  };
-
 
 
   return (
@@ -244,50 +220,50 @@ const App = () => {
                 </ListGroup.Item>
               ))}
             </ListGroup>
-            {selectedLocation && <Button variant="success" onClick={handleConfirm} className="mt-3">Search</Button>}
             {error && <Alert variant="danger" className="mt-3">{error}</Alert>}
           </Col>
         </Row>
-        {confirmedLocation && (
-          <>
-            <Row className="justify-content-md-center mt-5">
-              <Col md={12}>
-                <MapContainer 
-                  center={[confirmedLocation.lat, confirmedLocation.lng]} 
-                  zoom={13} 
-                  style={{ height: '400px', width: '100%'}}
-                >
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <Marker position={[confirmedLocation.lat, confirmedLocation.lng]}>
-                    <Popup>
-                      Selected Location
-                    </Popup>
-                  </Marker>
-                  <MapUpdater location={confirmedLocation} />  
-                </MapContainer>
-              </Col>
-            </Row>
-            {weather && (
-              <Row className="justify-content-md-center mt-5">
-                <Col md={6}>
-                  <Card>
-                    <Card.Body>
-                      <Card.Title>Weather Summary</Card.Title>
-                      <Card.Text>
-                        <strong>Location:</strong> {weather.name}<br />
-                        <strong>Temperature:</strong> {weather.main.temp} &#176;C<br />
-                        <strong>Weather:</strong> {weather.weather[0].description}<br />
-                        <strong>Humidity:</strong> {weather.main.humidity} %<br />
-                        <strong>Wind Speed:</strong> {weather.wind.speed} m/s<br />
-                      </Card.Text>
-                    </Card.Body>
-                  </Card>
-                </Col>
-              </Row>
-            )}
-          </>
+        <Row className="justify-content-md-center mt-5">
+          <Col md={12}>
+            <MapContainer 
+              center={[-35.308433, 149.124668]} 
+              zoom={13} 
+              style={{ height: '400px', width: '100%' }}
+              >
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              />
+              {selectedLocation && (
+                <Marker position={[selectedLocation.lat, selectedLocation.lng]}>
+                  <Popup>
+                    Selected Location
+                  </Popup>
+                </Marker>
+              )}
+              <MapUpdater 
+                selectedLocation={setSelectedLocation} 
+              />
+            </MapContainer>
+          </Col>
+        </Row>
+        {weather && (
+          <Row className="justify-content-md-center mt-5">
+            <Col md={6}>
+              <Card>
+                <Card.Body>
+                  <Card.Title>Weather Summary</Card.Title>
+                  <Card.Text>
+                    <strong>Location:</strong> {weather.name}<br />
+                    <strong>Temperature:</strong> {weather.main.temp} &#176;C<br />
+                    <strong>Weather:</strong> {weather.weather[0].description}<br />
+                    <strong>Humidity:</strong> {weather.main.humidity} %<br />
+                    <strong>Wind Speed:</strong> {weather.wind.speed} m/s<br />
+                  </Card.Text>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
         )}
       </Container>
     </div>
