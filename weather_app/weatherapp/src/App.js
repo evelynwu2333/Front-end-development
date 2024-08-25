@@ -51,19 +51,43 @@ const App = () => {
   const fetchSuggestions = useCallback((input) => {
     if (window.autocompleteService) {
       try {
-        console.log("Fetching suggestions for input:", input);
-        window.autocompleteService.getPlacePredictions(
-          {input, types: ['geocode'] }, (predictions, status) => {
-            console.log("Suggestions fetch status:", status);
-            if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-              console.log("Suggestions fetched:", predictions);
-              setSuggestions(predictions);
-            } else {
-              console.error("Failed to fetch location suggestions with status:", status);
-              setError("Failed to fetch location suggestions. Please try again.")
+        setError(null);
+        const latLngPattern = /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/;
+        const utmPattern = /^\d+\s+\d+\s+\d+[A-Z]$/i;
+        if (latLngPattern.test(input)) {
+          const [lat, lng] = input.split(',').map(Number);;
+          setSelectedLocation({ lat, lng });
+          fetchWeather(lat, lng);
+          return; 
+        } else if (utmPattern.test(input)){
+          // check if the input is UTM coordinates
+          const [easting, northing, zone] = input.split(/\s+/);
+          const zoneNumber = zone.slice(0, -1);
+          const zoneLetter = zone.slice(-1);
+          const [lat, lng] = proj4(
+            `+proj=utm +zone=${zoneNumber}${zoneLetter}`, 
+            '+proj=longlat +datum=WGS84', 
+            [parseFloat(easting), parseFloat(northing)]
+          );
+          console.log("UTM detected:", {lat, lng});
+          setSelectedLocation({lat, lng});
+          fetchWeather(lat, lng);
+          return;
+        } else {
+          console.log("Fetching suggestions for input:", input);
+          window.autocompleteService.getPlacePredictions(
+            {input, types: ['geocode'] }, (predictions, status) => {
+              console.log("Suggestions fetch status:", status);
+              if (status === window.google.maps.places.PlacesServiceStatus.OK) {
+                console.log("Suggestions fetched:", predictions);
+                setSuggestions(predictions);
+              } else {
+                console.error("Failed to fetch location suggestions with status:", status);
+                setError("Failed to fetch location suggestions. Please try again.")
+              }
             }
-          }
-        );
+          );
+        }
       } catch (error) {
         console.error("Error fetch suggestions: ", error);
         setError("Failed to fetch location suggestions. Please try again");
@@ -99,7 +123,7 @@ const App = () => {
     setInput(input);
     setError(null);
     if (input.length > 2) {
-      handleSearch(input);
+      fetchSuggestions(input);
     } else {
       setSuggestions([])
     }
@@ -112,6 +136,7 @@ const App = () => {
         window.placesService.getDetails({ placeId }, (place, status) => {
           console.log("Place details response status:", status);
           if (status === window.google.maps.places.PlacesServiceStatus.OK) {
+            setSuggestions([]);
             const location = place.geometry.location;
             console.log("Fetched location:", location);
             setSelectedLocation({ lat: location.lat(), lng: location.lng() });
@@ -132,42 +157,6 @@ const App = () => {
     }
   };
 
-  const handleSearch = async () => {
-    try {
-      setError(null);
-      const latLngPattern = /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/;
-      const utmPattern = /^\d+\s+\d+\s+\d+[A-Z]$/i;
-      if (latLngPattern.test(input)) {
-        const [lat, lng] = input.split(',').map(Number);;
-        setSelectedLocation({ lat, lng });
-        fetchWeather(lat, lng);
-        return; 
-      } else if (utmPattern.test(input)){
-        // check if the input is UTM coordinates
-        const [easting, northing, zone] = input.split(/\s+/);
-        const zoneNumber = zone.slice(0, -1);
-        const zoneLetter = zone.slice(-1);
-        const [lat, lng] = proj4(
-          `+proj=utm +zone=${zoneNumber}${zoneLetter}`, 
-          '+proj=longlat +datum=WGS84', 
-          [parseFloat(easting), parseFloat(northing)]
-        );
-        console.log("UTM detected:", {lat, lng});
-        setSelectedLocation({lat, lng});
-        fetchWeather(lat, lng);
-        return;
-      } else {
-        // if not coordinates, assume it is a place name
-        console.log('Fetching place suggestions by text...');
-        fetchSuggestions(input);
-      }
-    } catch (error) {
-      console.error("Error during search:", error);
-      setError("Failed to fetch location details. Please try again.")
-    }
-  };
-
-
   return (
     <div>
       <Navbar bg="dark" variant="dark">
@@ -186,7 +175,7 @@ const App = () => {
                   placeholder="Search for places..."
                 />
               </Form.Group>
-              <Button variant="primary" onClick={handleSearch} className="mt-3">Search</Button>
+              {/* <Button variant="primary" className="mt-3">Search</Button> */}
             </Form>
             <ListGroup className="mt-3">
               {suggestions.map(suggestion => (
