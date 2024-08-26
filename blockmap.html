@@ -27,14 +27,7 @@
         height: 100%;
         width: 100%;
       }
-      #container {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        height: 30%;
-        width: 100%;
-        z-index: 3;
-      }
+
       #fileInputDiv {
         position: absolute;
         margin-left: 15px;
@@ -63,6 +56,8 @@
         cursor: pointer; 
         margin-bottom: 20px;
       }
+
+
       #processFile {
         background-color: #007dea; 
         color: white; 
@@ -76,6 +71,7 @@
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); 
         transition: background-color 0.3s, box-shadow 0.3s; 
       }
+
       .popup {
         display: none; /* Hidden by default */
         position: fixed;
@@ -85,7 +81,7 @@
         height: 100%;
         overflow: auto;
         background-color: rgba(0, 0, 0, 0.4); /* Black w/ opacity */
-        z-index: 4;
+        z-index: 5;
       }
 
       .popup-content {
@@ -112,13 +108,68 @@
         cursor: pointer;
       }
 
+      #printWidget {
+        display: none;
+      }
+
+      #container {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        align-items: center;
+        z-index: 3;
+        display: flex;
+        height: 35%;
+      }
+
+      .icon-button {
+        position: fixed;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 10px;
+        z-index: 500; 
+        display: none;
+      }
+
+      .expand-button {
+        position: fixed;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 10px;
+        z-index: 500; 
+        display: inline;
+        bottom: auto;        
+      }
+
+      .collapse-button {
+        position: fixed;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 10px;
+        z-index: 500; 
+        display: inline;
+        bottom: 12px;
+      }
+
+      #tableContainer {
+        flex: 1;
+        width: 100%;
+        overflow-y: auto;
+        padding: 10px;
+      }
+
     </style>
 
-    <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
-
     <script src="https://js.arcgis.com/4.30/"></script>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
+    
+    
     <script>
       require([
         "esri/core/promiseUtils",
@@ -128,77 +179,180 @@
         "esri/views/MapView", 
         "esri/layers/FeatureLayer", 
         "esri/rest/support/Query",
+        "esri/widgets/Print", "esri/widgets/Expand", 
+        "esri/widgets/Search",
+        "esri/widgets/BasemapGallery",
         "xlsx"
-      ], (promiseUtils, FeatureTable, PopupTemplate, Map, MapView, FeatureLayer, Query, XLSX) => {
-
-        const map = new Map({
-          basemap: "gray-vector"
-        });
-
-        const view = new MapView({
-          map: map,
-          container: "viewDiv",
-          zoom: 13,
-          center: [149.133, -35.281]
-        });
+      ], (promiseUtils, FeatureTable, PopupTemplate, Map, MapView, FeatureLayer, Query, Print, Expand, Search, BasemapGallery, XLSX) => {
         
         // response after an excel file submitted
-        document.getElementById('processFile').addEventListener('click', function() {
 
-          // disable submit button for 2s
+          const map = new Map({
+            basemap: "gray-vector"
+          });
+
+          const view = new MapView({
+            map: map,
+            container: "viewDiv",
+            zoom: 13,
+            center: [149.133, -35.281]
+          });
+
+          const searchWidget = new Search({
+            view: view
+          });
+
+          // Add the search widget to the top right corner of the view
+          view.ui.add(searchWidget, {
+            position: "top-right"
+          });
+
+          // Add print widget
+          const print = new Print({
+            view: view,
+            // specify print service
+            printServiceUrl:
+              "https://utility.arcgisonline.com/arcgis/rest/services/Utilities/PrintingTools/GPServer/Export%20Web%20Map%20Task"
+          });
+
+          // Create the Expand widget to contain print block
+          const expandprint = new Expand({
+            view: view, // Reference to the MapView
+            content: print,
+            expanded: false // Start with the Expand widget collapsed
+          });
+
+          // Add the Expand widget to the top-right corner of the view
+          view.ui.add(expandprint, "top-right");
+
+          // Create the BasemapGallery widget
+          var basemapGallery = new BasemapGallery({
+            view: view // Reference to the MapView
+          });
+
+          // Create the Expand widget to contain print block
+          var expandbasemap = new Expand({
+            view: view, // Reference to the MapView
+            content: basemapGallery,
+            expanded: false // Start with the Expand widget collapsed
+          });
+
+          // Add the widget to the top-right corner of the view
+          view.ui.add(expandbasemap, { position: "top-right" });
+            
+          const fileInput = document.getElementById('excelFile');
           const button = document.getElementById('processFile');
-          button.disabled = true;
-          setTimeout(() => {
-            button.disabled = false;
-          }, 2000);
-          
-          // clear any existing table
-          const tableContainer = document.getElementById('tableContainer');
-          tableContainer.innerHTML = '';
+          const toggleTableBtn = document.getElementById('toggleTableBtn');
+          let previousData = null;
 
-          // read Excel file to json
-          var file = document.getElementById('excelFile').files[0];
-          if (file) {
-            var fileFormat = file.name.split('.').pop().toLowerCase(); 
 
-            var reader = new FileReader();
-            reader.onload = function(e) {
+          // file input
+          let workbook;
+          let worksheet; 
+          fileInput.addEventListener("change", ()=>{
+            let file = fileInput.files[0];
+            if (file) {
+              let fileFormat = file.name.split('.').pop().toLowerCase(); 
+              // accepted data format
               if (!['xlsx', 'xls', 'csv'].includes(fileFormat)) {
                 alert('Please upload an Excel file (.xls, .xlsx, .csv)');
-                document.getElementById('excelFile').value = '';
+                fileInput.value = '';
                 return;               
               }
+              var reader = new FileReader();
+              reader.onload = function(e) {
 
-              var data = new Uint8Array(e.target.result);
-              var workbook = XLSX.read(data, {type: 'array'});
-              
-              var worksheet; 
-              if (fileFormat == 'xlsx' || fileFormat == 'xls') {
-                worksheet = workbook.Sheets['Sessions'];
-              } else {
-                worksheet = workbook.Sheets[workbook.SheetNames[0]];
-              }
+                // read data from input file
+                let data = new Uint8Array(e.target.result);
+                workbook = XLSX.read(data, {type: 'array'});
+                
+                if (fileFormat == 'xlsx' || fileFormat == 'xls') {
+                  showSheetSelectionPopup(workbook.SheetNames);
+                  
+                } else {
+                  worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                }
+              }; 
+              reader.readAsArrayBuffer(file);
+            } else { return null }
+          }, false);
+          
+          function showSheetSelectionPopup(sheetNames) {
+            // Create the select element
+            const popup = window.open('', "Sheet selection", "width=300, height=200");
+            popup.document.write("<h3>Select a Sheet</h3>");
+            const select = popup.document.createElement('select');
+            select.id = 'sheetSelect';
+            sheetNames.forEach(sheetName => {
+              const option = popup.document.createElement('option');
+              option.value = sheetName;
+              option.text = sheetName;
+              select.appendChild(option);
+            });
+
+            popup.document.body.appendChild(select);
+
+            const button = popup.document.createElement('button');
+            button.textContent = 'Select';
+            button.onclick = function() {
+              worksheet = workbook.Sheets[select.value];
+              popup.close();
+            };
+            popup.document.body.appendChild(button);
+          }
+
+          // response after clicking submit
+          button.addEventListener('click', ()=>{
+            if (worksheet) {
+              console.log("File submitted");
+              // disable submit button for 2s
+              button.disabled = true;
+              setTimeout(() => {
+                button.disabled = false;
+              }, 2000);
 
               // Convert the worksheet to JSON
-              var jsonData = XLSX.utils.sheet_to_json(worksheet);
+              let jsonData = XLSX.utils.sheet_to_json(worksheet);
               // console.log(jsonData);
 
-              // Clean up jsonData and alert removed invalid data
-              var cleanData = cleanJson(jsonData);
+              // if the same data uploaded, exit and do nothing
+              if (JSON.stringify(previousData) === JSON.stringify(jsonData)) {
+                console.log("File content is the same. Nothing is changed. ");
+                return;
+              } 
+              previousData = jsonData;
+              // console.log(previousData);
+
+              // clean up feature table
+              const tableContainer = document.getElementById("tableContainer");
+              tableContainer.innerHTML = "";
+
+              // clean up feature layer
+              map.layers.forEach(layer => {
+                if (layer.title === "ACTGOV BLOCKS") {
+                  console.log(layer.title, " cleaned up");
+                  map.remove(layer);
+                }
+              });
+
+              // Clean jsonData and alert removed invalid data
+              let cleanData = cleanJson(jsonData);
 
               // Extract data from Block_Key_Arc column
-              var rawData = cleanData.map(function(row) {
+              let rawData = cleanData.map(function(row) {
                   return row['Block_Key_Arc'];
               });
 
               // Format Block_Key_Arc data
-              var formattedData = "'" + rawData.join("', '") + "'";
+              let formattedData = "'" + rawData.join("', '") + "'";
               // console.log(formattedData);
 
               // get all extra field names
-              const fieldsArray = getAllFields(cleanData);
+              let fieldsArray = getAllFields(cleanData);
+
               // format extra fields
-              const jsfields = formatFields(fieldsArray);
+              let jsfields = formatFields(fieldsArray);
+              console.log("Fields extracted from uploaded data: ", fieldsArray);
 
               // load block feature layer
               const fieldnames = ["OBJECTID", "BLOCK_KEY", "BLOCK_NUMBER", "SECTION_NUMBER", "NEW_TERRITORY_PLAN"];
@@ -213,6 +367,7 @@
               query.where = "BLOCK_KEY IN (" + formattedData + ")";
               blocks.queryFeatures(query).then(response => {
                 if (response) {
+                  
                   // get all features in blocks layer
                   var blockfeatures = response.features;
 
@@ -231,7 +386,7 @@
                   const selectedFields = blocks.fields.filter(item => fieldnames.includes(item.name));
                   
                   // Custom Pop-up to show excel data only
-                  var fieldscopy = fieldnames.slice();
+                  let fieldscopy = fieldnames.slice();
                   fieldscopy.splice(0,1);
                   const popupFields = formatFieldInfos(fieldscopy.concat(fieldsArray));
                   const template = new PopupTemplate({
@@ -266,13 +421,14 @@
 
                   // Add merged layer to the map         
                   map.add(mergedblocks);
+                  
 
                   // set up feature table
                   const featureTable = new FeatureTable({
                     returnGeometryEnabled: true,
                     layer: mergedblocks,
                     view: view, // required to work with selection in the table and view
-                    container: "tableContainer",
+
                     // Configuration for the ActionColumn, which can be used to display a single action for each row.
                     // In this case, an action that zooms the map to a particular feature is displayed.
                     // This allows zooming to a particular feature without changing the table's current row selection.
@@ -282,7 +438,12 @@
                       callback: ({ feature }) => view.goTo(feature)
                     }
                   });
-
+                  featureTable.when(()=>{
+                    featureTable.container = "tableContainer";
+                    toggleTableBtn.classList.remove('icon-button');
+                    toggleTableBtn.classList.add('expand-button');
+                  });
+                  
 
                   // Wait for the view to finish loading before reacting to events.
                   view.when(async () => {
@@ -306,17 +467,34 @@
                         }
                       });
                     });
-                  });                
+                  }); 
                 }
-              })                
-            };
-            reader.readAsArrayBuffer(file);
-          } else { return null}
-        }, false);           
-      });
+              })
+            }
+            
+                  
+          }, false)
 
-      // Function to clean up JSON data and alert
-      function cleanJson(data) {
+          // toggle button
+          toggleTableBtn.addEventListener("click", ()=>{
+            if (toggleTableBtn.classList.contains('expand-button')) {
+              toggleTableBtn.classList.remove('expand-button')
+              toggleTableBtn.classList.add('collapse-button');
+              container.style.height = "auto";
+              console.log(toggleTableBtn.classList);
+            } else if (toggleTableBtn.classList.contains('collapse-button')) {
+              toggleTableBtn.classList.remove('collapse-button');
+              toggleTableBtn.classList.add('expand-button');
+              container.style.height = "35%";
+              console.log(toggleTableBtn.classList);
+            }
+          });
+          
+      }); 
+      
+
+      // Function to clean up JSON data and alert in popup window
+      function cleanJson(data = null) {
         let cleanedData = [];
         let cleanedItems = [];
 
@@ -332,9 +510,18 @@
         }
         return cleanedData;
       }
+
+      // toggle button and container initial state
+      function setInitialStyle() {
+        
+        container.style.display = "flex";
+        container.style.height = "35%";
+        toggleTableBtn.style.display = "inline";
+        toggleTableBtn.style.bottom = "auto";
+      }
                         
       // Function to get all unique fields from the JSON table
-      function getAllFields(jsonTable) {
+      function getAllFields(jsonTable = null) {
         var fields = new Set();
         
         jsonTable.forEach(function(record) {
@@ -347,19 +534,20 @@
       }
 
       // Function to format fields
-      function formatFields(fields) {
+      function formatFields(fields = []) {
         return fields.map(function(field) {
           return {name: field, type: "string"};
         });
       }
       
       // Function to format fields for fieldInfos
-      function formatFieldInfos(fields) {
+      function formatFieldInfos(fields = []) {
         return fields.map(function(field) {
           return { fieldName: field, label: field.replace(/_/g, " ") };
         });
       }
-      // Function to show modal
+
+      // Function to show pop-up modal
       function showPopup(mes) {
         const modal = document.getElementById("popup");
         const modalText = document.getElementById("message");
@@ -378,6 +566,7 @@
             }
         }
       }
+
     </script>
   </head>
 
@@ -394,8 +583,9 @@
       </div>
     </div>
     <div id="viewDiv"></div>
-    <div id="container">
+    <div id="container" display="flex">
+      <calcite-icon id="toggleTableBtn" class="icon-button" icon="chevrons-up" scale="m"></calcite-icon>
       <div id="tableContainer"></div>
-    </div>
+    </div>    
   </body>
 </html>
