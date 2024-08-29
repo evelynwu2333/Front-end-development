@@ -1,3 +1,12 @@
+<!-- 
+ * This script sets up a web mapping application using ArcGIS API for JavaScript
+ * It includes functionalities such as uploading an Excel file, 
+ * processing the data from the file, 
+ * displaying the data on a map, 
+ * interacting with the data through feature table, 
+ * and exporting the data as a CSV file.
+ -->
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -28,7 +37,9 @@
         width: 100%;
       }
 
+      /* file input and submit */
       #fileInputDiv {
+        font-family: Arial, Helvetica, sans-serif;
         position: absolute;
         margin-left: 15px;
         margin-top: 100px;
@@ -44,10 +55,9 @@
         font-weight: bold; 
         color: rgb(45, 45, 45); 
         display: inline-block;
-        margin-left: 10px;
-        margin-top: 10px;
+        margin-left: 20px;
+        margin-top: 15px;
       }
-      
       #excelFile {
         border: none;
         border-radius: 8px; 
@@ -56,8 +66,6 @@
         cursor: pointer; 
         margin-bottom: 20px;
       }
-
-
       #processFile {
         background-color: #007dea; 
         color: white; 
@@ -72,6 +80,7 @@
         transition: background-color 0.3s, box-shadow 0.3s; 
       }
 
+      /* alerting pop-up div style */
       .popup {
         display: none; /* Hidden by default */
         position: fixed;
@@ -83,7 +92,6 @@
         background-color: rgba(0, 0, 0, 0.4); /* Black w/ opacity */
         z-index: 5;
       }
-
       .popup-content {
         background-color: #fefefe;
         margin: auto;
@@ -93,14 +101,12 @@
         max-width: 300px;
         text-align: center;
       }
-
       .close-button {
         color: #aaa;
         float: right;
         font-size: 28px;
         font-weight: bold;
       }
-
       .close-button:hover,
       .close-button:focus {
         color: black;
@@ -108,10 +114,7 @@
         cursor: pointer;
       }
 
-      #printWidget {
-        display: none;
-      }
-
+      /* container for feature table and two buttons */
       #container {
         position: fixed;
         bottom: 0;
@@ -123,7 +126,7 @@
         display: flex;
         height: 35%;
       }
-
+      /* toggle button initial style */
       .icon-button {
         position: fixed;
         background: none;
@@ -131,9 +134,10 @@
         cursor: pointer;
         padding: 10px;
         z-index: 500; 
-        display: none;
+        display: none; /* Hidden by default */
+        margin-top: 10px;
       }
-
+      /* toggle button expand style */
       .expand-button {
         position: fixed;
         background: none;
@@ -142,9 +146,10 @@
         padding: 10px;
         z-index: 500; 
         display: inline;
-        bottom: auto;        
+        bottom: auto;
+        margin-top: 10px;        
       }
-
+      /* toggle button collapse style */
       .collapse-button {
         position: fixed;
         background: none;
@@ -154,21 +159,53 @@
         z-index: 500; 
         display: inline;
         bottom: 12px;
+        margin-top: 10px;
       }
-
+      /* feature table container */
       #tableContainer {
         flex: 1;
         width: 100%;
         overflow-y: auto;
         padding: 10px;
       }
-
+      /* export to csv button */
+      #exportButton {
+        position: fixed;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 10px;
+        z-index: 500; 
+        display: none;
+        margin-left: 60%;
+        margin-top: 10px;
+      }
     </style>
+  </head>
+
+  <body>
+    <div id= "fileInputDiv">
+        <label for="excelFile">Upload an Excel file (.xls .xlsx .csv):</label>
+        <input type="file" id="excelFile" name="excelFile" accept=".xls,.xlsx,.csv">
+        <button id="processFile">Submit</button>
+    </div>
+    <div id="popup" class="popup">
+      <div class="popup-content">
+        <span class="close-button">&times;</span>
+        <p id="message"></p>
+      </div>
+    </div>
+    </div>
+    <div id="viewDiv"></div>
+    <div id="container" display="flex">
+      <calcite-icon id="toggleTableBtn" class="icon-button" icon="chevrons-up" scale="m"></calcite-icon>
+      <calcite-icon id="exportButton" icon="download" scale="m"></calcite-icon>
+      <div id="tableContainer"></div>
+    </div>
 
     <script src="https://js.arcgis.com/4.30/"></script>
     <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/light/main.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    
     
     <script>
       require([
@@ -185,313 +222,297 @@
         "xlsx"
       ], (promiseUtils, FeatureTable, PopupTemplate, Map, MapView, FeatureLayer, Query, Print, Expand, Search, BasemapGallery, XLSX) => {
         
-        // response after an excel file submitted
+        // map and view
+        const map = new Map({
+          basemap: "gray-vector"
+        });
 
-          const map = new Map({
-            basemap: "gray-vector"
-          });
+        const view = new MapView({
+          map: map,
+          container: "viewDiv",
+          zoom: 13,
+          center: [149.133, -35.281]
+        });
 
-          const view = new MapView({
-            map: map,
-            container: "viewDiv",
-            zoom: 13,
-            center: [149.133, -35.281]
-          });
+        // Add search widget
+        const searchWidget = new Search({
+          view: view
+        });
+        view.ui.add(searchWidget, {
+          position: "top-right"
+        });
 
-          const searchWidget = new Search({
-            view: view
-          });
+        // Add print widget
+        const print = new Print({
+          view: view,
+          // specify print service
+          printServiceUrl:
+            "https://utility.arcgisonline.com/arcgis/rest/services/Utilities/PrintingTools/GPServer/Export%20Web%20Map%20Task",
+          // display: none
+        });
 
-          // Add the search widget to the top right corner of the view
-          view.ui.add(searchWidget, {
-            position: "top-right"
-          });
+        // Expand widget to contain print block
+        const expandprint = new Expand({
+          view: view, // Reference to the MapView
+          content: print,
+          expanded: false // Start with the Expand widget collapsed
+        });
+        view.ui.add(expandprint, "top-right");
 
-          // Add print widget
-          const print = new Print({
-            view: view,
-            // specify print service
-            printServiceUrl:
-              "https://utility.arcgisonline.com/arcgis/rest/services/Utilities/PrintingTools/GPServer/Export%20Web%20Map%20Task"
-          });
+        // Add BasemapGallery widget
+        var basemapGallery = new BasemapGallery({
+          view: view // Reference to the MapView
+        });
 
-          // Create the Expand widget to contain print block
-          const expandprint = new Expand({
-            view: view, // Reference to the MapView
-            content: print,
-            expanded: false // Start with the Expand widget collapsed
-          });
+        // Expand widget to contain BasemapGallery block
+        var expandbasemap = new Expand({
+          view: view, // Reference to the MapView
+          content: basemapGallery,
+          expanded: false // Start with the Expand widget collapsed
+        });
+        view.ui.add(expandbasemap, { position: "top-right" });
 
-          // Add the Expand widget to the top-right corner of the view
-          view.ui.add(expandprint, "top-right");
+        // variables            
+        const fileInput = document.getElementById('excelFile');
+        const button = document.getElementById('processFile');
+        const toggleTableBtn = document.getElementById('toggleTableBtn');
+        const exportBtn = document.getElementById("exportButton")
+        // variables for event outside of submit event
+        var bf;
+        var fn;
+        var fa;
+        // variable for detecting if new file is the same as last submitted data
+        let previousData = null;
 
-          // Create the BasemapGallery widget
-          var basemapGallery = new BasemapGallery({
-            view: view // Reference to the MapView
-          });
+        // response of file input
+        let workbook;
+        let worksheet; 
 
-          // Create the Expand widget to contain print block
-          var expandbasemap = new Expand({
-            view: view, // Reference to the MapView
-            content: basemapGallery,
-            expanded: false // Start with the Expand widget collapsed
-          });
-
-          // Add the widget to the top-right corner of the view
-          view.ui.add(expandbasemap, { position: "top-right" });
-            
-          const fileInput = document.getElementById('excelFile');
-          const button = document.getElementById('processFile');
-          const toggleTableBtn = document.getElementById('toggleTableBtn');
-          let previousData = null;
-
-
-          // file input
-          let workbook;
-          let worksheet; 
-          fileInput.addEventListener("change", ()=>{
-            let file = fileInput.files[0];
-            if (file) {
-              let fileFormat = file.name.split('.').pop().toLowerCase(); 
-              // accepted data format
-              if (!['xlsx', 'xls', 'csv'].includes(fileFormat)) {
-                alert('Please upload an Excel file (.xls, .xlsx, .csv)');
-                fileInput.value = '';
-                return;               
+        fileInput.addEventListener("change", ()=>{
+          let file = fileInput.files[0];
+          if (file) {
+            let fileFormat = file.name.split('.').pop().toLowerCase(); 
+            // accepted data formats
+            if (!['xlsx', 'xls', 'csv'].includes(fileFormat)) {
+              alert('Please upload an Excel file (.xls, .xlsx, .csv)');
+              fileInput.value = '';
+              return;               
+            }
+            // read file
+            var reader = new FileReader();
+            reader.onload = function(e) {
+              let data = new Uint8Array(e.target.result);
+              workbook = XLSX.read(data, {type: 'array'});
+              if (fileFormat == 'xlsx' || fileFormat == 'xls') {
+                  const sheetNames = 'Sessions'
+                  worksheet = workbook.Sheets[sheetNames];
+                  // console.log(worksheet);
+              } else {
+                worksheet = workbook.Sheets[workbook.SheetNames[0]];
               }
-              var reader = new FileReader();
-              reader.onload = function(e) {
+            }; 
+            reader.readAsArrayBuffer(file);
+          } 
+        }, false);
+        
+        // response of clicking submit button
+        button.addEventListener('click', ()=>{
+          if (worksheet) {
+            console.log("File submitted");
+            // disable submit button for 2s
+            button.disabled = true;
+            setTimeout(() => {
+              button.disabled = false;
+            }, 2000);
 
-                // read data from input file
-                let data = new Uint8Array(e.target.result);
-                workbook = XLSX.read(data, {type: 'array'});
-                
-                if (fileFormat == 'xlsx' || fileFormat == 'xls') {
-                  showSheetSelectionPopup(workbook.SheetNames);
-                  
-                } else {
-                  worksheet = workbook.Sheets[workbook.SheetNames[0]];
-                }
-              }; 
-              reader.readAsArrayBuffer(file);
-            } else { return null }
-          }, false);
-          
-          function showSheetSelectionPopup(sheetNames) {
-            // Create the select element
-            const popup = window.open('', "Sheet selection", "width=300, height=200");
-            popup.document.write("<h3>Select a Sheet</h3>");
-            const select = popup.document.createElement('select');
-            select.id = 'sheetSelect';
-            sheetNames.forEach(sheetName => {
-              const option = popup.document.createElement('option');
-              option.value = sheetName;
-              option.text = sheetName;
-              select.appendChild(option);
+            // Convert the worksheet to JSON
+            let jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+            // if the same data uploaded, exit and do nothing
+            if (JSON.stringify(previousData) === JSON.stringify(jsonData)) {
+              console.log("File content is the same. Nothing is changed. ");
+              return;
+            } 
+            previousData = jsonData;
+
+            // then clean up existing layer and table          
+            cleanup(map);
+            
+            // Clean jsonData and alert removed invalid block keys
+            let cleanData = cleanJson(jsonData);
+
+            // Extract data from Block_Key_Arc column
+            let rawData = cleanData.map(function(row) {
+                return row['Block_Key_Arc'];
             });
 
-            popup.document.body.appendChild(select);
+            // Format Block_Key_Arc data
+            let formattedData = "'" + rawData.join("', '") + "'";
+            // console.log(formattedData);
 
-            const button = popup.document.createElement('button');
-            button.textContent = 'Select';
-            button.onclick = function() {
-              worksheet = workbook.Sheets[select.value];
-              popup.close();
-            };
-            popup.document.body.appendChild(button);
-          }
+            // get all extra field names
+            let fieldsArray = getAllFields(cleanData);
 
-          // response after clicking submit
-          button.addEventListener('click', ()=>{
-            if (worksheet) {
-              console.log("File submitted");
-              // disable submit button for 2s
-              button.disabled = true;
-              setTimeout(() => {
-                button.disabled = false;
-              }, 2000);
+            // format extra fields
+            let jsfields = formatFields(fieldsArray);
+            console.log("Fields extracted from uploaded data: ", fieldsArray);
 
-              // Convert the worksheet to JSON
-              let jsonData = XLSX.utils.sheet_to_json(worksheet);
-              // console.log(jsonData);
-
-              // if the same data uploaded, exit and do nothing
-              if (JSON.stringify(previousData) === JSON.stringify(jsonData)) {
-                console.log("File content is the same. Nothing is changed. ");
-                return;
-              } 
-              previousData = jsonData;
-              // console.log(previousData);
-
-              // clean up feature table
-              const tableContainer = document.getElementById("tableContainer");
-              tableContainer.innerHTML = "";
-
-              // clean up feature layer
-              map.layers.forEach(layer => {
-                if (layer.title === "ACTGOV BLOCKS") {
-                  console.log(layer.title, " cleaned up");
-                  map.remove(layer);
-                }
-              });
-
-              // Clean jsonData and alert removed invalid data
-              let cleanData = cleanJson(jsonData);
-
-              // Extract data from Block_Key_Arc column
-              let rawData = cleanData.map(function(row) {
-                  return row['Block_Key_Arc'];
-              });
-
-              // Format Block_Key_Arc data
-              let formattedData = "'" + rawData.join("', '") + "'";
-              // console.log(formattedData);
-
-              // get all extra field names
-              let fieldsArray = getAllFields(cleanData);
-
-              // format extra fields
-              let jsfields = formatFields(fieldsArray);
-              console.log("Fields extracted from uploaded data: ", fieldsArray);
-
-              // load block feature layer
-              const fieldnames = ["OBJECTID", "BLOCK_KEY", "BLOCK_NUMBER", "SECTION_NUMBER", "NEW_TERRITORY_PLAN"];
-              const blocks = new FeatureLayer({
-                  url: 'https://services1.arcgis.com/E5n4f1VY84i0xSjy/arcgis/rest/services/ACTGOV_BLOCKS/FeatureServer/0',
-                  outFields: fieldnames,
-                  definitionExpression: "BLOCK_KEY IN (" + formattedData + ")"
-              });
-              
-              // query features
-              let query = blocks.createQuery();
-              query.where = "BLOCK_KEY IN (" + formattedData + ")";
-              blocks.queryFeatures(query).then(response => {
-                if (response) {
-                  
-                  // get all features in blocks layer
-                  var blockfeatures = response.features;
-
-                  // append extra data to blockfeatures by matching block key
-                  blockfeatures.forEach(function(feature) {
-                    var matchingRecord = cleanData.find(function(record) {
-                      return record.Block_Key_Arc === feature.attributes.BLOCK_KEY;
-                    });
-                    if (matchingRecord) {
-                      Object.assign(feature.attributes, matchingRecord);
-                      // console.log(matchingRecord);
-                    } 
-                  });
-
-                  // format subsetted fields from blocks layer
-                  const selectedFields = blocks.fields.filter(item => fieldnames.includes(item.name));
-                  
-                  // Custom Pop-up to show excel data only
-                  let fieldscopy = fieldnames.slice();
-                  fieldscopy.splice(0,1);
-                  const popupFields = formatFieldInfos(fieldscopy.concat(fieldsArray));
-                  const template = new PopupTemplate({
-                    content: [
-                      {
-                        type: "fields",
-                        fieldInfos: popupFields
-                      }
-                    ]
-                  });
-                  
-                  // Create a new feature layer with extra data
-                  const mergedblocks = new FeatureLayer({
-                    source: blockfeatures, 
-                    title: blocks.title,
-                    fields: selectedFields.concat(jsfields),
-                    objectIdFields: blocks.objectIdFields,
-                    geometryType: blocks.geometryType,
-                    spatialReference: blocks.spatialReference,
-                    popupTemplate: template,
-                    visibleElements: {
-                      menuItems: {
-                        clearSelection: true,
-                        refreshData: true,
-                        toggleColumns: true,
-                        selectedRecordsShowAllToggle: true,
-                        selectedRecordsShowSelectedToggle: true,
-                        zoomToSelection: true
-                      }
-                    },
-                  });
-
-                  // Add merged layer to the map         
-                  map.add(mergedblocks);
-                  
-
-                  // set up feature table
-                  const featureTable = new FeatureTable({
-                    returnGeometryEnabled: true,
-                    layer: mergedblocks,
-                    view: view, // required to work with selection in the table and view
-
-                    // Configuration for the ActionColumn, which can be used to display a single action for each row.
-                    // In this case, an action that zooms the map to a particular feature is displayed.
-                    // This allows zooming to a particular feature without changing the table's current row selection.
-                    actionColumnConfig: {
-                      label: "Zoom to feature",
-                      icon: "zoom-to-object",
-                      callback: ({ feature }) => view.goTo(feature)
-                    }
-                  });
-                  featureTable.when(()=>{
-                    featureTable.container = "tableContainer";
-                    toggleTableBtn.classList.remove('icon-button');
-                    toggleTableBtn.classList.add('expand-button');
-                  });
-                  
-
-                  // Wait for the view to finish loading before reacting to events.
-                  view.when(async () => {
-                    view.on("immediate-click", async (evt) => {
-                      const { results } = await view.hitTest(evt);
-
-                      results.forEach(({ graphic }) => {
-                        // Ignore graphics that do not belong to the primary FeatureLayer.
-                        if (graphic?.layer !== featureTable.layer) {
-                          return;
-                        }
-
-                        // Used to uniquely identify each feature and row in the table.
-                        const objectId = graphic.getObjectId();
-
-                        // Update the table's selection depending on if the feature was already selected/highlighted.
-                        if (featureTable.highlightIds.includes(objectId)) {
-                          featureTable.highlightIds.remove(objectId);
-                        } else {
-                          featureTable.highlightIds.add(objectId);
-                        }
-                      });
-                    });
-                  }); 
-                }
-              })
-            }
+            // load block feature layer
+            const fieldnames = ["OBJECTID", "BLOCK_KEY", "BLOCK_NUMBER", "SECTION_NUMBER", "NEW_TERRITORY_PLAN"];
+            const blocks = new FeatureLayer({
+                url: 'https://services1.arcgis.com/E5n4f1VY84i0xSjy/arcgis/rest/services/ACTGOV_BLOCKS/FeatureServer/0',
+                outFields: fieldnames,
+                definitionExpression: "BLOCK_KEY IN (" + formattedData + ")"
+            });
             
-                  
-          }, false)
+            // query features
+            let query = blocks.createQuery();
+            query.where = "BLOCK_KEY IN (" + formattedData + ")";
+            blocks.queryFeatures(query).then(response => {
+              if (response) {
+                
+                // get all features in blocks layer
+                var blockfeatures = response.features;
 
-          // toggle button
-          toggleTableBtn.addEventListener("click", ()=>{
-            if (toggleTableBtn.classList.contains('expand-button')) {
-              toggleTableBtn.classList.remove('expand-button')
-              toggleTableBtn.classList.add('collapse-button');
-              container.style.height = "auto";
-              console.log(toggleTableBtn.classList);
-            } else if (toggleTableBtn.classList.contains('collapse-button')) {
-              toggleTableBtn.classList.remove('collapse-button');
-              toggleTableBtn.classList.add('expand-button');
-              container.style.height = "35%";
-              console.log(toggleTableBtn.classList);
-            }
-          });
+                // append extra data to blockfeatures by matching block key
+                blockfeatures.forEach(function(feature) {
+                  var matchingRecord = cleanData.find(function(record) {
+                    return record.Block_Key_Arc === feature.attributes.BLOCK_KEY;
+                  });
+                  if (matchingRecord) {
+                    Object.assign(feature.attributes, matchingRecord);
+                  } 
+                });
+
+                // format subsetted fields from blocks layer
+                const selectedFields = blocks.fields.filter(item => fieldnames.includes(item.name));
+                
+                // Custom Pop-up to show excel data only
+                let fieldscopy = fieldnames.slice();
+                fieldscopy.splice(0,1);
+                const popupFields = formatFieldInfos(fieldscopy.concat(fieldsArray));
+                const template = new PopupTemplate({
+                  content: [
+                    {
+                      type: "fields",
+                      fieldInfos: popupFields
+                    }
+                  ]
+                });
+                
+                // Create a new feature layer with extra data
+                const mergedblocks = new FeatureLayer({
+                  source: blockfeatures, 
+                  title: blocks.title,
+                  fields: selectedFields.concat(jsfields), // extra fields
+                  objectIdFields: blocks.objectIdFields,
+                  geometryType: blocks.geometryType,
+                  spatialReference: blocks.spatialReference,
+                  popupTemplate: template,
+                  visibleElements: {
+                    menuItems: {
+                      clearSelection: true,
+                      refreshData: true,
+                      toggleColumns: true,
+                      selectedRecordsShowAllToggle: true,
+                      selectedRecordsShowSelectedToggle: true,
+                      zoomToSelection: true
+                    }
+                  },
+                });
+
+                // Add merged layer to the map         
+                map.add(mergedblocks);
+                
+                // set up feature table
+                const featureTable = new FeatureTable({
+                  returnGeometryEnabled: true,
+                  layer: mergedblocks,
+                  view: view, // required to work with selection in the table and view
+
+                  // Configuration for the ActionColumn
+                  actionColumnConfig: {
+                    label: "Zoom to feature",
+                    icon: "zoom-to-object",
+                    callback: ({ feature }) => view.goTo(feature)
+                  }
+                });
+                featureTable.when(()=>{
+                  featureTable.container = "tableContainer";
+                  toggleTableBtn.classList.remove('icon-button');
+                  toggleTableBtn.classList.add('expand-button');
+                  exportBtn.style.display = "inline";
+                });
+
+                // variables for download table button use
+                bf = blockfeatures;
+                fn = fieldnames;
+                fa = fieldsArray;                
+                
+                // Wait for the view to finish loading before reacting to events.
+                view.when(async () => {
+                  view.on("immediate-click", async (evt) => {
+                    const { results } = await view.hitTest(evt);
+
+                    results.forEach(({ graphic }) => {
+                      // Ignore graphics that do not belong to the primary FeatureLayer.
+                      if (graphic?.layer !== featureTable.layer) {
+                        return;
+                      }
+
+                      // Used to uniquely identify each feature and row in the table.
+                      const objectId = graphic.getObjectId();
+
+                      // Update the table's selection depending on if the feature was already selected/highlighted.
+                      if (featureTable.highlightIds.includes(objectId)) {
+                        featureTable.highlightIds.remove(objectId);
+                      } else {
+                        featureTable.highlightIds.add(objectId);
+                      }
+                    });
+                  });
+                }); 
+              }
+            });
+          }                  
+        }, false)
+
+        // click download table button
+        let isDonwloading = false;
+        exportBtn.addEventListener("click",()=>{
+          if (isDonwloading) {
+            return;
+          }  
+          // disable submit button for 3s
+          exportBtn.disabled = true;
+          isDonwloading = true;
           
+          let csvoutput = arrayToCSV(bf, fn.concat(fa));
+          downloadCSV(csvoutput, 'blockFeatures.csv');
+
+          setTimeout(() => {
+            exportBtn.disabled = false;
+            isDonwloading = false;
+            }, 2000);
+        });
+                
+        // click toggle button
+        toggleTableBtn.addEventListener("click", ()=>{
+          if (toggleTableBtn.classList.contains('expand-button')) {
+            toggleTableBtn.classList.remove('expand-button')
+            toggleTableBtn.classList.add('collapse-button');
+            container.style.height = "auto";
+            console.log(toggleTableBtn.classList);
+          } else if (toggleTableBtn.classList.contains('collapse-button')) {
+            toggleTableBtn.classList.remove('collapse-button');
+            toggleTableBtn.classList.add('expand-button');
+            container.style.height = "35%";
+            console.log(toggleTableBtn.classList);
+          }
+        });
       }); 
-      
+
+      /* --------- functions ----------- */
 
       // Function to clean up JSON data and alert in popup window
       function cleanJson(data = null) {
@@ -509,15 +530,6 @@
             showPopup(`Removed invalid Block Keys: ${JSON.stringify(cleanedItems)}`);
         }
         return cleanedData;
-      }
-
-      // toggle button and container initial state
-      function setInitialStyle() {
-        
-        container.style.display = "flex";
-        container.style.height = "35%";
-        toggleTableBtn.style.display = "inline";
-        toggleTableBtn.style.bottom = "auto";
       }
                         
       // Function to get all unique fields from the JSON table
@@ -557,35 +569,64 @@
         modal.style.display = "block";
 
         span.onclick = function() {
-            modal.style.display = "none";
+          modal.style.display = "none";
         }
 
         window.onclick = function(event) {
-            if (event.target == modal) {
-                modal.style.display = "none";
-            }
+          if (event.target == modal) {
+            modal.style.display = "none";
+          }
         }
       }
 
-    </script>
-  </head>
+      // function to clean up exisiting layer and table
+      function cleanup(exmap) {
+        // clean up feature table
+        const tableContainer = document.getElementById("tableContainer");
+        tableContainer.innerHTML = "";
 
-  <body>
-    <div id= "fileInputDiv">
-        <label for="excelFile">Upload an Excel file (.xls .xlsx .csv):</label>
-        <input type="file" id="excelFile" name="excelFile" accept=".xls,.xlsx,.csv">
-        <button id="processFile">Submit</button>
-    </div>
-    <div id="popup" class="popup">
-      <div class="popup-content">
-        <span class="close-button">&times;</span>
-        <p id="message"></p>
-      </div>
-    </div>
-    <div id="viewDiv"></div>
-    <div id="container" display="flex">
-      <calcite-icon id="toggleTableBtn" class="icon-button" icon="chevrons-up" scale="m"></calcite-icon>
-      <div id="tableContainer"></div>
-    </div>    
+        // clean up feature layer
+        exmap.layers.forEach(layer => {
+          if (layer.title === "ACTGOV BLOCKS") {
+            console.log(layer.title, " cleaned up");
+            exmap.remove(layer);
+          }
+        });
+      }
+
+      // function to convert features array to csv data
+      function arrayToCSV(data, keys) {
+        if (data.length === 0) return '';
+      
+        const csvRows = [keys.join(",")];
+        data.forEach(feature => {
+          const values = keys.map(key => {
+            let value = feature.attributes[key];
+            if (typeof value === 'string' && value.includes('\n')) {
+              value = `"${value.replace(/"/g, '""')}"`; // Escape double quotes by doubling them
+            }
+            return value;
+          });
+            csvRows.push(values.join(","));
+        });
+
+        return csvRows.join("\n");
+      }
+
+      // function to download feature table as csv file
+      function downloadCSV(csv, filename) {
+        let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        let link = document.createElement("a");
+        if (link.download !== undefined) { // feature detection
+          let url = URL.createObjectURL(blob);
+          link.setAttribute("href", url);
+          link.setAttribute("download", filename);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      }
+    </script>
   </body>
 </html>
