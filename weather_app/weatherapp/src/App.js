@@ -108,7 +108,7 @@ const App = () => {
         params: {
           lat: lat,
           lon: lng,
-          appid: '60d545799457c43d0ee69204110012da',
+          appid: 'YOUR_API_KEY',
           units: 'metric'
         }
       });
